@@ -1,0 +1,26 @@
+name: Deploy to CF
+
+on:
+  push:
+    branches: [main]
+    paths: ['明文源吗']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy cfnew-compare
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_ID: ${{ secrets.CF_KV_ID }}
+        run: |
+          set -e
+          if [ -z "$CF_API_TOKEN" ]; then echo "Missing CF_API_TOKEN secret"; exit 1; fi
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/workers/scripts/cfnew-compare" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -F 'metadata={"main_module":"worker.js","bindings":[{"type":"kv_namespace","name":"C","namespace_id":"'"$CF_KV_ID"'"},{"type":"plain_text","name":"U","text":"b0490ae7-e133-4209-af28-a6a28f3255c4"}],"compatibility_date":"2024-01-01","compatibility_flags":["nodejs_compat"]};type=application/json' \
+            -F "worker.js=@明文源吗;type=application/javascript+module"
+          echo "Deployed cfnew-compare"
