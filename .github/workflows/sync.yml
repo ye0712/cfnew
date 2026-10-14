@@ -1,24 +1,41 @@
-name: Sync Upstream
+name: Update Worker from Upstream
 
 on:
   schedule:
-    - cron: '0 3 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  sync:
+  update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Sync from upstream
+      - name: Fetch upstream worker source
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/byJoey/cfnew.git || true
-          git fetch upstream
-          git checkout main
-          git merge upstream/main --no-edit || (git checkout --theirs . && git add -A && git commit -m "chore: sync upstream" || true)
-          git push origin main || echo "nothing to push"
+          set -e
+          URL="https://raw.githubusercontent.com/byJoey/cfnew/main/%E6%98%8E%E6%96%87%E6%BA%90%E5%90%97"
+          curl -fsSL "$URL" -o worker.js
+          SIZE=$(wc -c < worker.js)
+          echo "Fetched bytes: $SIZE"
+          if [ "$SIZE" -lt 1000 ]; then echo "Source too small, abort"; exit 1; fi
+          head -n 2 worker.js
+
+      - name: Deploy to Cloudflare
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_ID: ${{ secrets.CF_KV_ID }}
+        run: |
+          set -e
+          if [ -z "$CF_API_TOKEN" ]; then echo "Missing CF_API_TOKEN secret"; exit 1; fi
+          curl -fsS -X PUT "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/workers/scripts/cfnew-compare" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -F 'metadata={"main_module":"worker.js","bindings":[{"type":"kv_namespace","name":"C","namespace_id":"'"$CF_KV_ID"'"},{"type":"plain_text","name":"U","text":"b0490ae7-e133-4209-af28-a6a28f3255c4"}],"compatibility_date":"2024-01-01","compatibility_flags":["nodejs_compat"]};type=application/json' \
+            -F "worker.js=@worker.js;type=application/javascript+module" \
+            -o response.json
+          echo "Deploy response:"
+          cat response.json
+          grep -qE '"success":[[:space:]]*true' response.json
+          echo "Deployed cfnew-compare from upstream"
