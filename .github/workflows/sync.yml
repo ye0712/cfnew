@@ -2,7 +2,8 @@ name: Update Worker from Upstream
 
 on:
   schedule:
-    - cron: '0 4 * * *'
+    # 每天北京时间 02:00 (UTC 18:00) 自动同步并部署
+    - cron: '0 18 * * *'
   workflow_dispatch:
 
 permissions:
